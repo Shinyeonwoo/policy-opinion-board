@@ -83,6 +83,116 @@
     const list = document.getElementById("list");
     if (error) { list.innerHTML = '<div class="meta">불러오기 실패: ' + error.message + '</div>'; return; }
     const count = s => data.filter(d => d.stance === s).length;
+    const set = (id, v) => document.getElementById(id).textContent = v;
+    set("total", data.length); set("agree", count("찬성")); set("cond", count("조건부")); set("against", count("재검토"));
+    list.innerHTML = data.length ? data.map(d => `
+      <div class="item">
+        <div class="meta">${new Date(d.created_at).toLocaleString("ko-KR")} · ${esc(d.unit || "소속 미기재")}</div>
+        <span class="tag">${esc(d.topic)}</span><span class="tag b">${esc(d.stance)}</span>
+        <div style="margin-top:6px">${esc(d.body)}</div>
+      </div>`).join("") : '<div class="meta">아직 의견이 없습니다. 첫 의견을 남겨보세요.</div>';
+  }
+
+  // ③ 저장하기
+  document.getElementById("submit").onclick = async () => {
+    const $ = id => document.getElementById(id);
+    const row = { unit: $("unit").value.trim(), topic: $("topic").value, stance: $("stance").value, body: $("body").value.trim() };
+    if (!row.body) { $("msg").textContent = "이유 · 제안을 한 줄 적어주세요."; return; }
+    const { error } = await db.from("opinions").insert(row);
+    $("msg").textContent = error ? "저장 실패: " + error.message : "저장되었습니다.";
+    if (!error) { $("body").value = ""; load(); }
+  };
+
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  load();
+</script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>정책 의견 수렴 보드</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root { --navy:#0F2340; --acc:#D97757; --line:#E5E7EB; --gray:#6B7280; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; background:#F6F7F9; color:#1F2937; }
+  header { background:var(--navy); color:#fff; padding:28px 20px; }
+  header h1 { margin:0; font-size:22px; }
+  header p { margin:6px 0 0; opacity:.75; font-size:14px; }
+  main { max-width:760px; margin:0 auto; padding:20px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:20px; margin-bottom:16px; }
+  label { display:block; font-size:13px; color:var(--gray); margin:10px 0 4px; }
+  input, select, textarea { width:100%; padding:10px; border:1px solid var(--line); border-radius:8px; font-size:15px; font-family:inherit; }
+  textarea { min-height:90px; }
+  button { background:var(--navy); color:#fff; border:0; border-radius:8px; padding:12px 18px; font-size:15px; cursor:pointer; margin-top:12px; }
+  button:hover { background:#1C355E; }
+  .item { border-top:1px solid var(--line); padding:14px 0; }
+  .item:first-child { border-top:0; }
+  .meta { font-size:12px; color:var(--gray); margin-bottom:4px; }
+  .tag { display:inline-block; background:#EEF2F8; color:var(--navy); border-radius:999px; padding:2px 10px; font-size:12px; margin-right:6px; }
+  .tag.b { background:#FBEFE8; color:var(--acc); }
+  .stats { display:flex; gap:12px; }
+  .stat { flex:1; text-align:center; }
+  .stat b { display:block; font-size:28px; color:var(--acc); }
+  .stat span { font-size:12px; color:var(--gray); }
+  #msg { font-size:13px; color:var(--acc); margin-top:8px; min-height:18px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>정책 의견 수렴 보드</h1>
+  <p>교육훈련 개선 방안(안)에 대한 현장 의견을 모읍니다 · 실습용 가상 데이터</p>
+</header>
+<main>
+  <div class="card">
+    <div class="stats">
+      <div class="stat"><b id="total">0</b><span>전체 의견</span></div>
+      <div class="stat"><b id="agree">0</b><span>찬성</span></div>
+      <div class="stat"><b id="cond">0</b><span>조건부</span></div>
+      <div class="stat"><b id="against">0</b><span>재검토</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <label>소속 (가상)</label>
+    <input id="unit" placeholder="예: 정책기획과">
+    <label>안건</label>
+    <select id="topic">
+      <option>온라인 교육 비중 30% 확대</option>
+      <option>온라인 이수시간 50% 인정</option>
+      <option>교육 만족도 평가 반영</option>
+      <option>기타</option>
+    </select>
+    <label>의견</label>
+    <select id="stance">
+      <option value="찬성">찬성</option>
+      <option value="조건부">조건부 찬성</option>
+      <option value="재검토">재검토 필요</option>
+    </select>
+    <label>이유 · 제안 (한 줄)</label>
+    <textarea id="body" placeholder="예: 야간 근무자는 온라인이 유일한 선택지라 확대에 찬성"></textarea>
+    <button id="submit">의견 남기기</button>
+    <div id="msg"></div>
+  </div>
+
+  <div class="card" id="list"><div class="meta">불러오는 중…</div></div>
+</main>
+
+<script>
+  // ① Supabase 프로젝트 정보 — Settings > API Keys 에서 복사해서 붙여넣기
+  const SUPABASE_URL = "https://ftunwnvolvrlvhonpqlp.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_PSVFHqiWUI-ZknWZdwSR9A_NNKU1WtM";
+  const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  // ② 목록 불러오기
+  async function load() {
+    const { data, error } = await db.from("opinions").select("*").order("created_at", { ascending: false });
+    const list = document.getElementById("list");
+    if (error) { list.innerHTML = '<div class="meta">불러오기 실패: ' + error.message + '</div>'; return; }
+    const count = s => data.filter(d => d.stance === s).length;
     total.textContent = data.length; agree.textContent = count("찬성"); cond.textContent = count("조건부"); against.textContent = count("재검토");
     list.innerHTML = data.length ? data.map(d => `
       <div class="item">
